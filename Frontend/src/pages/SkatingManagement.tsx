@@ -340,7 +340,7 @@ const SkatingManagement: React.FC = () => {
                     </div>
                 </Paper>
                 {/* Main Content Area */}
-                <Paper sx={{ p: { xs: 2, md: 4 }, borderRadius: 4, boxShadow: 6 }}>
+                <Paper sx={{ p: { xs: 2, md: 4 }, borderRadius: 4, boxShadow: 6, minWidth: 870 }}>
 
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
                         <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ fontWeight: 'bold' }}>
