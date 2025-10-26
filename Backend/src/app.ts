@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import sessionRoutes from './routes/sessionRoutes';
 import authRoutes from './routes/authRoutes';
 import notificationRoutes from './routes/notificationRoutes';
+import morgan from 'morgan';
 import { checkSessionsAndSendNotifications } from './services/notificationService';
 
 
@@ -12,12 +13,30 @@ import { checkSessionsAndSendNotifications } from './services/notificationServic
 dotenv.config();
 
 const app: Application = express();
-const PORT = process.env.PORT || 5000;
+const PORT = 5000;
 const MONGO_URI = process.env.MONGO_URI;
 
+// CORS configuration
+const allowedOrigins = [
+    'https://skating-management.vercel.app',
+    'http://localhost:5173' // Your local frontend development server
+];
+
+const corsOptions: cors.CorsOptions = {
+    origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps or curl requests) or from the allowed list
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    }
+};
+
 // Middlewares
-app.use(cors()); // Enable Cross-Origin Resource Sharing
+app.use(cors(corsOptions)); // Enable Cross-Origin Resource Sharing with specific origins
 app.use(express.json()); // Parse JSON request bodies
+app.use(morgan('dev')); // HTTP request logger
 
 // API Routes
 app.use('/api/sessions', sessionRoutes);
@@ -25,7 +44,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/notifications', notificationRoutes);
 
 // Root endpoint for health check
-app.get('/api', (req: Request, res: Response) => {
+app.get('/api/check', (req: Request, res: Response) => {
     res.status(200).json({ message: 'Skating Management API is running.' });
 });
 
