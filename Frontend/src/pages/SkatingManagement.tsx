@@ -302,9 +302,13 @@ const SkatingManagement: React.FC = () => {
     };
 
     const handleEnableNotifications = async () => {
-        await subscribeUserToPush();
+        const success = await subscribeUserToPush();
         setShowNotificationDialog(false);
-        setSnackbar({ open: true, message: 'Push notifications have been enabled!' });
+        if (success) {
+            setSnackbar({ open: true, message: 'Push notifications have been enabled!' });
+        } else {
+            setSnackbar({ open: true, message: 'Could not enable push notifications. Please check your browser settings.' });
+        }
     };
 
     const theme = useTheme();
@@ -319,7 +323,6 @@ const SkatingManagement: React.FC = () => {
             window.speechSynthesis.speak(new SpeechSynthesisUtterance(''));
         }
         setIsAudioUnlocked(true);
-        console.log('Audio context unlocked.');
     }, [isAudioUnlocked]);
 
     return (

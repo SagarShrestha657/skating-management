@@ -17,25 +17,24 @@ function urlBase64ToUint8Array(base64String: string) {
     return outputArray;
 }
 
-export async function subscribeUserToPush() {
+export async function subscribeUserToPush(): Promise<boolean> {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
         console.error('Push messaging is not supported');
-        return;
+        return false;
     }
 
     if (!VAPID_PUBLIC_KEY) {
         console.error('VITE_VAPID_PUBLIC_KEY is not defined in your .env file.');
-        return;
+        return false;
     }
 
     try {
         const swRegistration = await navigator.serviceWorker.register('/sw.js');
-        console.log('Service Worker registered.');
 
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
             console.log('Permission for notifications was denied');
-            return;
+            return false;
         }
 
         const subscription = await swRegistration.pushManager.subscribe({
@@ -45,7 +44,9 @@ export async function subscribeUserToPush() {
 
         // Send the subscription to the backend
         await subscribeToPushNotifications(subscription);
+        return true;
     } catch (error) {
         console.error('Failed to subscribe the user: ', error);
+        return false;
     }
 }

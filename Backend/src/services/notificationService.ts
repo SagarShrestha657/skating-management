@@ -38,6 +38,10 @@ export const checkSessionsAndSendNotifications = async () => {
             const payload = JSON.stringify({
                 title: 'Skating Session Over',
                 body: `Time is up for ${session.name}!`,
+                data: {
+                    // This URL will be used by the service worker to open the app on click
+                    url: 'https://skating-management.vercel.app/' 
+                }
             });
 
             for (const sub of subscriptions) {
