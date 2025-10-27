@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback,  } from 'react';
+import React, { useState, useEffect, useCallback, } from 'react';
 import {
-    Typography, 
+    Typography,
     type SelectChangeEvent,
     TextField,
     Select,
@@ -53,12 +53,12 @@ const SkatingManagement: React.FC = () => {
     const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
     const [sessionToComplete, setSessionToComplete] = useState<string | null>(null);
     const [addSessionDialogOpen, setAddSessionDialogOpen] = useState(false);
-   // const [notifiedSessions, setNotifiedSessions] = useState<Set<string>>(new Set());
+    // const [notifiedSessions, setNotifiedSessions] = useState<Set<string>>(new Set());
     //const [notificationCounts, setNotificationCounts] = useState<Record<string, number>>({});
     const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
     const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | undefined>();
-    const [isAudioUnlocked, setIsAudioUnlocked] = useState(false);
-    const [showNotificationDialog, setShowNotificationDialog] = useState(false);
+    const [isAudioUnlocked, setIsAudioUnlocked] = useState(false); // To track if user has interacted for audio
+    const [notificationPermission, setNotificationPermission] = useState(Notification.permission);
 
     // Pricing configuration
     const pricingConfig: Record<number, number> = {
@@ -109,7 +109,7 @@ const SkatingManagement: React.FC = () => {
     // Effect to load and set speech synthesis voices
     useEffect(() => {
         const loadVoices = () => {
-            const availableVoices = window.speechSynthesis.getVoices(); 
+            const availableVoices = window.speechSynthesis.getVoices();
             if (availableVoices.length === 0) return; // Voices not ready
 
             setVoices(availableVoices);
@@ -132,20 +132,7 @@ const SkatingManagement: React.FC = () => {
         loadVoices(); // Initial call in case they are already loaded
     }, []);
 
-    // Effect to prompt for push notifications once per day
-    useEffect(() => {
-        // Check if notifications are supported and permission has not been granted or denied yet
-        if ('PushManager' in window && Notification.permission === 'default') {
-            const lastPromptDate = localStorage.getItem('lastNotificationPrompt');
-            const today = new Date().toDateString();
-
-            // If we haven't prompted today, show the dialog
-            if (!lastPromptDate || new Date(lastPromptDate).toDateString() !== today) {
-                setShowNotificationDialog(true);
-                localStorage.setItem('lastNotificationPrompt', new Date().toISOString());
-            }
-        }
-    }, []);
+    // This effect is no longer needed as we are using a manual button.
 
     // Use a ref to access the latest notification counts inside the interval without re-triggering the effect.
     // const notificationCountsRef = useRef(notificationCounts);
@@ -292,11 +279,28 @@ const SkatingManagement: React.FC = () => {
     };
 
     // Handles the manual announcement for a specific session
-    const handleAnnounce = (name: string) => {
+    const handleAnnounce = (session: UserSession) => {
         // Cancel any ongoing speech to prioritize the manual announcement
         window.speechSynthesis.cancel();
+
+        const nepaliHoursMap: Record<number, string> = {
+            0.5: 'आधा घण्टाको',
+            1: 'एक घण्टाको',
+            1.5: 'डेढ घण्टाको',
+            2: 'दुई घण्टाको',
+            2.5: 'साढे दुई घण्टाको',
+            3: 'तीन घण्टाको',
+            3.5: 'साढे तीन घण्टाको',
+            4: 'चार घण्टाको',
+        };
+
+        const durationText = nepaliHoursMap[session.hours as keyof typeof nepaliHoursMap] || `${session.hours} घण्टाको`;
+        const name = session.name;
+
+        const message = `कृपया ध्यान दिनुहोस् ${name}, तपाईंको ${durationText} समय समाप्त भएको छ, फेरि आउनुहोला।`;
+
         const utterance = new SpeechSynthesisUtterance(
-            `कृपया ध्यान दिनुहोस् ${name}, तपाईंको स्केटिङ सत्र समाप्त भएको छ, फेरि आउनुहोला।`
+            message
         );
         utterance.rate = 0.9;
         utterance.pitch = 0.8;
@@ -315,30 +319,22 @@ const SkatingManagement: React.FC = () => {
 
     const handleEnableNotifications = async () => {
         const success = await subscribeUserToPush();
-        setShowNotificationDialog(false);
         if (success) {
             setSnackbar({ open: true, message: 'Push notifications have been enabled!' });
+            setNotificationPermission('granted');
         } else {
             setSnackbar({ open: true, message: 'Could not enable push notifications. Please check your browser settings.' });
+            setNotificationPermission(Notification.permission); // Re-check permission status
         }
     };
 
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-    // This function unlocks the browser's audio context on the first user interaction.
-    const handleFirstInteraction = useCallback(() => {
-        if (isAudioUnlocked) return;
-
-        // Play a silent utterance to unlock the audio context.
-        if (window.speechSynthesis.speaking === false && window.speechSynthesis.pending === false) {
-            window.speechSynthesis.speak(new SpeechSynthesisUtterance(''));
-        }
-        setIsAudioUnlocked(true);
-    }, [isAudioUnlocked]);
+   
 
     return (
-        <Box sx={{ minHeight: '100vh', minWidth: '100vw', bgcolor: 'grey.50', py: 2 }} onClick={handleFirstInteraction}>
+        <Box sx={{ minHeight: '100vh', minWidth: '100vw', bgcolor: 'grey.50', py: 2 }} >
             <div className="w-full h-full mx-auto px-4">
                 {/* Header */}
                 <Paper sx={{ p: { xs: 2, md: 4 }, mb: 4, bgcolor: 'primary.main', color: 'primary.contrastText', borderRadius: 4, boxShadow: 6 }}>
@@ -353,8 +349,20 @@ const SkatingManagement: React.FC = () => {
                 </Paper>
                 {/* Main Content Area */}
                 <Paper sx={{ p: { xs: 2, md: 4 }, borderRadius: 4, boxShadow: 6, minWidth: 870 }}>
+                    {'PushManager' in window && notificationPermission === 'default' && (
+                        <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            <Button
+                                variant="outlined"
+                                startIcon={<NotificationsActiveIcon />}
+                                onClick={handleEnableNotifications}
+                            >
+                                Enable Alerts
+                            </Button>
+                        </Box>
+                    )}
 
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4, mt: 2 }}>
+
                         <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ fontWeight: 'bold' }}>
                             Active ({userSessions.length})
                         </Typography>
@@ -397,6 +405,8 @@ const SkatingManagement: React.FC = () => {
                                     Analysis
                                 </Button>
                             )}
+
+
                             <Button variant="contained" color="secondary" onClick={logout}>
                                 Logout
                             </Button>
@@ -438,7 +448,7 @@ const SkatingManagement: React.FC = () => {
                                                     <IconButton
                                                         size="small"
                                                         color="primary"
-                                                        onClick={() => handleAnnounce(session.name)}
+                                                    onClick={() => handleAnnounce(session)}
                                                         aria-label={`announce session for ${session.name}`}
                                                     >
                                                         <VolumeUpIcon />
@@ -531,22 +541,6 @@ const SkatingManagement: React.FC = () => {
                     <DialogActions>
                         <Button onClick={handleCloseConfirmDialog}>Cancel</Button>
                         <Button onClick={handleConfirmComplete} color="primary" autoFocus>Confirm</Button>
-                    </DialogActions>
-                </Dialog>
-
-                {/* Notification Permission Dialog */}
-                <Dialog open={showNotificationDialog} onClose={() => setShowNotificationDialog(false)}>
-                    <DialogTitle sx={{ fontWeight: 'bold' }}>Enable Push Notifications</DialogTitle>
-                    <DialogContent>
-                        <DialogContentText>
-                            Enable push notifications to get alerts when a session ends, even if the app is in the background or closed.
-                        </DialogContentText>
-                    </DialogContent>
-                    <DialogActions>
-                        <Button onClick={() => setShowNotificationDialog(false)}>Not Now</Button>
-                        <Button onClick={handleEnableNotifications} variant="contained" startIcon={<NotificationsActiveIcon />}>
-                            Enable
-                        </Button>
                     </DialogActions>
                 </Dialog>
 
