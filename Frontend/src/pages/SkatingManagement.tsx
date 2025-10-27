@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback,  } from 'react';
 import {
-    Typography,
+    Typography, 
+    type SelectChangeEvent,
     TextField,
     Select,
     MenuItem,
@@ -108,23 +109,28 @@ const SkatingManagement: React.FC = () => {
     // Effect to load and set speech synthesis voices
     useEffect(() => {
         const loadVoices = () => {
-            const availableVoices = window.speechSynthesis.getVoices();
-            if (availableVoices.length > 0) {
-                setVoices(availableVoices);
-                // Set a default voice if none is selected, prefer a Google US English voice
-                if (!selectedVoiceURI && availableVoices.length > 0) {
-                    // Prioritize Nepali voice, otherwise fall back to the first available voice.
-                    const defaultVoice = availableVoices.find(v => v.lang === 'ne-NP') || availableVoices[0];
-                    setSelectedVoiceURI(defaultVoice.voiceURI);
-                }
+            const availableVoices = window.speechSynthesis.getVoices(); 
+            if (availableVoices.length === 0) return; // Voices not ready
+
+            setVoices(availableVoices);
+
+            const savedVoiceURI = localStorage.getItem('selectedVoiceURI');
+            const savedVoice = availableVoices.find(v => v.voiceURI === savedVoiceURI);
+
+            if (savedVoice) {
+                setSelectedVoiceURI(savedVoice.voiceURI);
+            } else {
+                // If no saved voice, find a default, prioritize Nepali
+                const defaultVoice = availableVoices.find(v => v.lang === 'ne-NP') || availableVoices.find(v => v.lang === 'en-US') || availableVoices[0];
+                setSelectedVoiceURI(defaultVoice.voiceURI);
+                localStorage.setItem('selectedVoiceURI', defaultVoice.voiceURI); // Save the default
             }
         };
 
         // Voices are loaded asynchronously
         window.speechSynthesis.onvoiceschanged = loadVoices;
         loadVoices(); // Initial call in case they are already loaded
-
-    }, [selectedVoiceURI]);
+    }, []);
 
     // Effect to prompt for push notifications once per day
     useEffect(() => {
@@ -301,6 +307,12 @@ const SkatingManagement: React.FC = () => {
         window.speechSynthesis.speak(utterance);
     };
 
+    const handleVoiceChange = (event: React.ChangeEvent<{ value: unknown }>) => {
+        const newVoiceURI = event.target.value as string;
+        setSelectedVoiceURI(newVoiceURI);
+        localStorage.setItem('selectedVoiceURI', newVoiceURI);
+    };
+
     const handleEnableNotifications = async () => {
         const success = await subscribeUserToPush();
         setShowNotificationDialog(false);
@@ -354,7 +366,7 @@ const SkatingManagement: React.FC = () => {
                                     <Select
                                         value={selectedVoiceURI || ''}
                                         label="Voice"
-                                        onChange={(e) => setSelectedVoiceURI(e.target.value as string)}
+                                        onChange={handleVoiceChange as (event: SelectChangeEvent<string>) => void}
                                         MenuProps={{
                                             PaperProps: {
                                                 sx: {
