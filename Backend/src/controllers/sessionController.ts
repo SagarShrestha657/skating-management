@@ -33,6 +33,34 @@ export const createSession = async (req: Request, res: Response) => {
     }
 };
 
+export const editSession = async (req: Request, res: Response) => {
+    try {
+        const { name, hours, quantity, totalAmount } = req.body;
+        const session = await Session.findById(req.params.id);
+
+        if (!session) {
+            return res.status(404).json({ message: 'Session not found.' });
+        }
+
+        // Recalculate endTime based on original startTime and new hours
+        const endTime = new Date(new Date(session.startTime!).getTime() + hours * 60 * 60 * 1000);
+
+        const updatedSession = await Session.findByIdAndUpdate(
+            req.params.id,
+            { name, hours, quantity, totalAmount, endTime },
+            { new: true }
+        );
+
+        if (!updatedSession) {
+            return res.status(404).json({ message: 'Session not found during update.' });
+        }
+
+        return res.status(200).json({ success: true, data: { session: updatedSession } });
+    } catch (error) {
+        console.error('Error editing session:', error);
+        return res.status(500).json({ message: 'Server error while editing session.' });
+    }
+};
 
 export const getActiveSessions = async (req: Request, res: Response) => {
     try {
@@ -60,6 +88,21 @@ export const deleteSession = async (req: Request, res: Response) => {
         return res.status(200).json({ success: true, message: 'Session marked as completed.' });
     } catch (error) {
         console.error('Error deleting session:', error);
+        return res.status(500).json({ message: 'Server error while deleting session.' });
+    }
+};
+
+export const deleteSessionPermanently = async (req: Request, res: Response) => {
+    try {
+        const session = await Session.findByIdAndDelete(req.params.id);
+
+        if (!session) {
+            return res.status(404).json({ message: 'Session not found.' });
+        }
+
+        return res.status(200).json({ success: true, message: 'Session permanently deleted.' });
+    } catch (error) {
+        console.error('Error permanently deleting session:', error);
         return res.status(500).json({ message: 'Server error while deleting session.' });
     }
 };

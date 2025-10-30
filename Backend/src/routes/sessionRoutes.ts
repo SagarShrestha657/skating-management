@@ -1,26 +1,15 @@
-import { Router } from 'express';
-import {
-    createSession,
-    getActiveSessions,
-    deleteSession,
-    getAnalyticsKpis,
-    getAnalyticsTransactions,
-    getWeeklySales,
-} from '../controllers/sessionController';
-import { protect, admin } from '../middleware/authMiddleware';
+import express from 'express';
+import { createSession, getActiveSessions, deleteSession, getAnalyticsKpis, getAnalyticsTransactions, getWeeklySales, editSession, deleteSessionPermanently } from '../controllers/sessionController';
 
-const router = Router();
+const router = express.Router();
 
-router.route('/').post(protect, createSession);
-
-router.route('/active').get(protect, getActiveSessions);
-
-router.route('/:id').delete(protect, deleteSession);
-
-router.route('/analytics/kpis').get(protect, admin, getAnalyticsKpis);
-
-router.route('/analytics/weekly').get(protect, admin, getWeeklySales);
-
-router.route('/analytics/transactions').get(protect, admin, getAnalyticsTransactions);
+router.post('/', createSession);
+router.get('/active', getActiveSessions);
+router.delete('/:id', deleteSession); // This is now the "complete" action (soft delete)
+router.put('/:id', editSession); // Route for editing a session
+router.delete('/permanent/:id', deleteSessionPermanently); // New route for permanent deletion
+router.get('/analytics/kpis', getAnalyticsKpis);
+router.get('/analytics/transactions', getAnalyticsTransactions);
+router.get('/analytics/weekly', getWeeklySales);
 
 export default router;

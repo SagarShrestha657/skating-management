@@ -35,11 +35,14 @@ import {
     Analytics as AnalyticsIcon,
     NotificationsActive as NotificationsActiveIcon,
     VolumeUp as VolumeUpIcon,
+    Edit as EditIcon,
+    Delete as DeleteIcon,
+    Check as CheckIcon,
 } from '@mui/icons-material';
 
 import { useAuth } from '../context/AuthContext';
 import { subscribeUserToPush } from '../utils/pushNotifications';
-import { type UserSession, getActiveSessions, createSession, deleteSession } from '../services/api';
+import { type UserSession, getActiveSessions, createSession, deleteSession, editSession, deleteSessionPermanently } from '../services/api';
 
 
 const SkatingManagement: React.FC = () => {
@@ -47,13 +50,18 @@ const SkatingManagement: React.FC = () => {
     const { role, logout } = useAuth();
     const [userSessions, setUserSessions] = useState<UserSession[]>([]);
     const [userName, setUserName] = useState('');
-    const [selectedHours, setSelectedHours] = useState<number>(0.5);
+    const [selectedHours, setSelectedHours] = useState<number>(1);
     const [quantity, setQuantity] = useState(1);
-    const [snackbar, setSnackbar] = useState({ open: false, message: '' });
-    const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-    const [sessionToComplete, setSessionToComplete] = useState<string | null>(null);
+    const [snackbar, setSnackbar] = useState<{ open: boolean, message: string }>({ open: false, message: '' });
+
+    // State for dialogs
     const [addSessionDialogOpen, setAddSessionDialogOpen] = useState(false);
-    // const [notifiedSessions, setNotifiedSessions] = useState<Set<string>>(new Set());
+    const [editSessionDialogOpen, setEditSessionDialogOpen] = useState(false);
+    const [sessionToEdit, setSessionToEdit] = useState<UserSession | null>(null);
+    const [completeConfirmDialogOpen, setCompleteConfirmDialogOpen] = useState(false);
+    const [sessionToComplete, setSessionToComplete] = useState<string | null>(null);
+    const [deleteConfirmDialogOpen, setDeleteConfirmDialogOpen] = useState(false);
+    const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
     //const [notificationCounts, setNotificationCounts] = useState<Record<string, number>>({});
     const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
     const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | undefined>();
@@ -132,62 +140,6 @@ const SkatingManagement: React.FC = () => {
         loadVoices(); // Initial call in case they are already loaded
     }, []);
 
-    // This effect is no longer needed as we are using a manual button.
-
-    // Use a ref to access the latest notification counts inside the interval without re-triggering the effect.
-    // const notificationCountsRef = useRef(notificationCounts);
-    // notificationCountsRef.current = notificationCounts;
-
-    // // Effect for audio notifications
-    // useEffect(() => {
-    //     const timer = setInterval(() => {
-    //         // Do not process if speech is already in progress
-    //         if (window.speechSynthesis.speaking) {
-    //             return;
-    //         }
-
-    //         const now = new Date();
-
-    //         // Find the first session that needs notification. The list is already sorted by end time.
-    //         const sessionToNotify = userSessions.find(session => {
-    //             if (!session._id || !session.endTime) return false;
-    //             const endTime = new Date(session.endTime);
-
-    //             return now >= endTime && !notifiedSessions.has(session._id);
-    //         });
-    //         console.log(sessionToNotify);
-    //         if (sessionToNotify) {
-    //             const sessionId = sessionToNotify._id!;
-    //             const count = notificationCountsRef.current[sessionId] || 0;
-
-    //             if (count < 3) {
-    //                 const utterance = new SpeechSynthesisUtterance(
-    //                     `कृपया ध्यान दिनुहोस् ${sessionToNotify.name}, तपाईंको स्केटिङ सत्र समाप्त भएको छ, फेरि आउनुहोला।`
-    //                 );
-    //                 utterance.rate = 0.9;
-    //                 utterance.pitch = 0.8;
-    //                 const selectedVoice = voices.find(v => v.voiceURI === selectedVoiceURI);
-    //                 if (selectedVoice) {
-    //                     utterance.voice = selectedVoice;
-    //                 }
-    //                 window.speechSynthesis.speak(utterance);
-
-    //                 // Update the count for this specific session
-    //                 setNotificationCounts(prev => ({ ...prev, [sessionId]: count + 1 }));
-    //             } else {
-    //                 // Mark as fully notified and move to the next session in the next interval
-    //                 setNotifiedSessions(prev => new Set(prev).add(sessionId));
-    //             }
-    //         }
-    //     }, 5000); // Check every 5 seconds
-
-    //     // Cleanup the interval on component unmount
-    //     return () => {
-    //         clearInterval(timer);
-    //         window.speechSynthesis.cancel(); // Stop any speech if component unmounts
-    //     };
-    // }, [userSessions, notifiedSessions, voices, selectedVoiceURI]);
-
     // Get current price based on selected hours
     const getCurrentPrice = () => {
         return pricingConfig[selectedHours as keyof typeof pricingConfig] || 0;
@@ -225,6 +177,29 @@ const SkatingManagement: React.FC = () => {
         }
     };
 
+    const handleEditSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!sessionToEdit || !sessionToEdit.name.trim()) {
+            setSnackbar({ open: true, message: 'User name is required.' });
+            return;
+        }
+
+        try {
+            await editSession(sessionToEdit._id!, {
+                name: sessionToEdit.name,
+                hours: sessionToEdit.hours,
+                quantity: sessionToEdit.quantity,
+                totalAmount: pricingConfig[sessionToEdit.hours as keyof typeof pricingConfig] * sessionToEdit.quantity,
+            });
+            setSnackbar({ open: true, message: 'Session updated successfully!' });
+            setEditSessionDialogOpen(false);
+            setSessionToEdit(null);
+            fetchSessions();
+        } catch (error) {
+            setSnackbar({ open: true, message: 'Failed to update session.' });
+        }
+    };
+
     // Format time for display
     const formatTime = (date: Date | string | undefined): string => {
         if (!date) return 'N/A';
@@ -236,16 +211,38 @@ const SkatingManagement: React.FC = () => {
         });
     };
 
+    // --- Dialog Handlers ---
+
+    const handleOpenEditDialog = (session: UserSession) => {
+        setSessionToEdit(session);
+        setEditSessionDialogOpen(true);
+    };
+
+    const handleCloseEditDialog = () => {
+        setEditSessionDialogOpen(false);
+        setSessionToEdit(null);
+    };
+
     // Opens the confirmation dialog
-    const handleOpenConfirmDialog = (id: string) => {
+    const handleOpenCompleteConfirmDialog = (id: string) => {
         setSessionToComplete(id);
-        setConfirmDialogOpen(true);
+        setCompleteConfirmDialogOpen(true);
     };
 
     // Closes the confirmation dialog
-    const handleCloseConfirmDialog = () => {
+    const handleCloseCompleteConfirmDialog = () => {
         setSessionToComplete(null);
-        setConfirmDialogOpen(false);
+        setCompleteConfirmDialogOpen(false);
+    };
+
+    const handleOpenDeleteConfirmDialog = (id: string) => {
+        setSessionToDelete(id);
+        setDeleteConfirmDialogOpen(true);
+    };
+
+    const handleCloseDeleteConfirmDialog = () => {
+        setSessionToDelete(null);
+        setDeleteConfirmDialogOpen(false);
     };
 
     // Handles the actual session completion after confirmation
@@ -256,25 +253,27 @@ const SkatingManagement: React.FC = () => {
 
         try {
             await deleteSession(completedSessionId);
-            setSnackbar({ open: true, message: 'Session marked as complete!' });
-
-            // Clean up notification state for the completed session
-            // setNotifiedSessions(prev => {
-            //     const newSet = new Set(prev);
-            //     newSet.delete(completedSessionId);
-            //     return newSet;
-            // });
-            // setNotificationCounts(prev => {
-            //     const newCounts = { ...prev };
-            //     delete newCounts[completedSessionId];
-            //     return newCounts;
-            // });
+            setSnackbar({ open: true, message: 'Session marked as complete!' })
 
             fetchSessions();
         } catch (error) {
             setSnackbar({ open: true, message: 'Failed to complete session.' });
         } finally {
-            handleCloseConfirmDialog();
+            handleCloseCompleteConfirmDialog();
+        }
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!sessionToDelete) return;
+
+        try {
+            await deleteSessionPermanently(sessionToDelete);
+            setSnackbar({ open: true, message: 'Session permanently deleted!' });
+            fetchSessions();
+        } catch (error) {
+            setSnackbar({ open: true, message: 'Failed to delete session.' });
+        } finally {
+            handleCloseDeleteConfirmDialog();
         }
     };
 
@@ -331,7 +330,7 @@ const SkatingManagement: React.FC = () => {
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-   
+
 
     return (
         <Box sx={{ minHeight: '100vh', minWidth: '100vw', bgcolor: 'grey.50', py: 2 }} >
@@ -445,22 +444,23 @@ const SkatingManagement: React.FC = () => {
                                             <TableCell align="right">{formatTime(session.endTime)}</TableCell>
                                             <TableCell align="center">
                                                 <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1 }}>
-                                                    <IconButton
-                                                        size="small"
-                                                        color="primary"
-                                                    onClick={() => handleAnnounce(session)}
-                                                        aria-label={`announce session for ${session.name}`}
-                                                    >
+                                                    <IconButton size="small" color="primary" onClick={() => handleAnnounce(session)} aria-label={`announce session for ${session.name}`}>
                                                         <VolumeUpIcon />
                                                     </IconButton>
-                                                    <Button
+                                                    <IconButton size="small" color="secondary" onClick={() => handleOpenEditDialog(session)} aria-label={`edit session for ${session.name}`}>
+                                                        <EditIcon />
+                                                    </IconButton>
+                                                    <IconButton
                                                         size="small"
-                                                        color="error"
-                                                        variant="outlined"
-                                                        onClick={() => handleOpenConfirmDialog(session._id!)}
+                                                        color="success"
+                                                        onClick={() => handleOpenCompleteConfirmDialog(session._id!)}
+                                                        aria-label={`complete session for ${session.name}`}
                                                     >
-                                                        Complete
-                                                    </Button>
+                                                        <CheckIcon />
+                                                    </IconButton>
+                                                    <IconButton size="small" color="error" onClick={() => handleOpenDeleteConfirmDialog(session._id!)} aria-label={`delete session for ${session.name}`}>
+                                                        <DeleteIcon />
+                                                    </IconButton>
                                                 </Box>
                                             </TableCell>
                                         </TableRow>
@@ -519,6 +519,51 @@ const SkatingManagement: React.FC = () => {
                     </form>
                 </Dialog>
 
+                {/* Edit Session Dialog */}
+                {sessionToEdit && (
+                    <Dialog open={editSessionDialogOpen} onClose={handleCloseEditDialog} fullWidth maxWidth="sm">
+                        <DialogTitle sx={{ fontWeight: 'bold' }}>Edit Session</DialogTitle>
+                        <form onSubmit={handleEditSubmit}>
+                            <DialogContent>
+                                <TextField
+                                    autoFocus
+                                    margin="dense"
+                                    label="User Name"
+                                    type="text"
+                                    fullWidth
+                                    variant="outlined"
+                                    value={sessionToEdit.name}
+                                    onChange={(e) => setSessionToEdit({ ...sessionToEdit, name: e.target.value })}
+                                    required
+                                    sx={{ mb: 2 }}
+                                />
+                                <FormControl fullWidth sx={{ mb: 2 }}>
+                                    <InputLabel>Select Duration</InputLabel>
+                                    <Select
+                                        value={sessionToEdit.hours}
+                                        onChange={(e) => setSessionToEdit({ ...sessionToEdit, hours: Number(e.target.value) })}
+                                        label="Select Duration"
+                                    >
+                                        {Object.entries(pricingConfig).map(([hour, price]) => (
+                                            <MenuItem key={hour} value={hour}>{`${hour} hours - Rs. ${price}`}</MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                    <Typography variant="subtitle1">Quantity:</Typography>
+                                    <IconButton onClick={() => setSessionToEdit({ ...sessionToEdit, quantity: Math.max(1, sessionToEdit.quantity - 1) })} color="primary"><RemoveIcon /></IconButton>
+                                    <Typography sx={{ fontWeight: 'bold', minWidth: '2ch', textAlign: 'center' }}>{sessionToEdit.quantity}</Typography>
+                                    <IconButton onClick={() => setSessionToEdit({ ...sessionToEdit, quantity: sessionToEdit.quantity + 1 })} color="primary"><AddIcon /></IconButton>
+                                </Box>
+                            </DialogContent>
+                            <DialogActions sx={{ p: '0 24px 16px' }}>
+                                <Button onClick={handleCloseEditDialog}>Cancel</Button>
+                                <Button type="submit" variant="contained">Save Changes</Button>
+                            </DialogActions>
+                        </form>
+                    </Dialog>
+                )}
+
                 {/* Snackbar for notifications */}
                 <Snackbar
                     open={snackbar.open}
@@ -527,20 +572,34 @@ const SkatingManagement: React.FC = () => {
                     message={snackbar.message}
                 />
 
-                {/* Confirmation Dialog */}
+                {/* Complete Confirmation Dialog */}
                 <Dialog
-                    open={confirmDialogOpen}
-                    onClose={handleCloseConfirmDialog}
+                    open={completeConfirmDialogOpen}
+                    onClose={handleCloseCompleteConfirmDialog}
                 >
                     <DialogTitle>Confirm Session Completion</DialogTitle>
                     <DialogContent>
                         <DialogContentText>
-                            Is the time over for this session? This will mark the session as completed.
+                            Are you sure you want to mark this session as completed?
                         </DialogContentText>
                     </DialogContent>
                     <DialogActions>
-                        <Button onClick={handleCloseConfirmDialog}>Cancel</Button>
+                        <Button onClick={handleCloseCompleteConfirmDialog}>Cancel</Button>
                         <Button onClick={handleConfirmComplete} color="primary" autoFocus>Confirm</Button>
+                    </DialogActions>
+                </Dialog>
+
+                {/* Delete Confirmation Dialog */}
+                <Dialog open={deleteConfirmDialogOpen} onClose={handleCloseDeleteConfirmDialog}>
+                    <DialogTitle sx={{ color: 'error.main' }}>Confirm Deletion</DialogTitle>
+                    <DialogContent>
+                        <DialogContentText>
+                            Are you sure you want to permanently delete this session? This action cannot be undone.
+                        </DialogContentText>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={handleCloseDeleteConfirmDialog}>Cancel</Button>
+                        <Button onClick={handleConfirmDelete} color="error" autoFocus>Delete</Button>
                     </DialogActions>
                 </Dialog>
 

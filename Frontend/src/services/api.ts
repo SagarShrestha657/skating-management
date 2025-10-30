@@ -70,8 +70,16 @@ export const createSession = async (sessionData: { name: string; hours: number; 
     return apiClient.post('/sessions', sessionData);
 };
 
+export const editSession = async (id: string, sessionData: { name: string; hours: number; quantity: number, totalAmount: number }): Promise<UserSession> => {
+    return apiClient.put(`/sessions/${id}`, sessionData);
+};
+
 export const deleteSession = async (id: string): Promise<{ success: boolean }> => {
     return apiClient.delete(`/sessions/${id}`);
+};
+
+export const deleteSessionPermanently = async (id: string): Promise<{ success: boolean }> => {
+    return apiClient.delete(`/sessions/permanent/${id}`);
 };
 
 export const getAnalyticsKpis = async (): Promise<{ data: { todaySales: number, monthSales: number } }> => {
