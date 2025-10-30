@@ -29,18 +29,19 @@ export const checkSessionsAndSendNotifications = async () => {
             return;
         }
 
-        const subscriptions = await Subscription.find();
-        if (subscriptions.length === 0) {
-            return;
-        }
-
         for (const session of expiredSessions) {
+            // Find subscriptions only for the area where the session expired
+            const subscriptions = await Subscription.find({ areaId: session.areaId });
+          
+            if (subscriptions.length === 0) {
+                continue; // Move to the next session
+            }
+
             const payload = JSON.stringify({
                 title: 'Skating Session Over',
                 body: `Time is up for ${session.name}!`,
                 data: {
-                    // This URL will be used by the service worker to open the app on click
-                    url: 'https://skating-management.vercel.app/' 
+                    url: 'https://skating-management.vercel.app/'
                 }
             });
 

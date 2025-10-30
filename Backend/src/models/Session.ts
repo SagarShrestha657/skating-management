@@ -9,6 +9,7 @@ export interface ISession extends Document {
     startTime: Date;
     endTime: Date;
     status: 'active' | 'completed';
+    areaId: string;
     notified?: boolean;
 }
 
@@ -25,6 +26,7 @@ const SessionSchema: Schema = new Schema(
             enum: ['active', 'completed'],
             default: 'active',
         },
+        areaId: { type: String, required: true, index: true },
         notified: { type: Boolean, default: false },
     },
     {

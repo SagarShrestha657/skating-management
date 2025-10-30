@@ -6,6 +6,7 @@ export interface ISubscription extends Document {
         p256dh: string;
         auth: string;
     };
+    areaId: string;
 }
 
 const SubscriptionSchema: Schema = new Schema({
@@ -14,6 +15,7 @@ const SubscriptionSchema: Schema = new Schema({
         p256dh: { type: String, required: true },
         auth: { type: String, required: true },
     },
+    areaId: { type: String, required: true, index: true },
 });
 
 export default mongoose.model<ISubscription>('Subscription', SubscriptionSchema);

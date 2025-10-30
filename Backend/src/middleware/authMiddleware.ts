@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 
-dotenv.config(); // Ensure environment variables are loaded
+dotenv.config();
 
 // Extend Express's Request interface to include the user payload from the JWT
 declare global {
@@ -10,9 +10,17 @@ declare global {
         interface Request {
             user?: {
                 role: 'admin' | 'employee';
+                areaId: string;
             };
         }
     }
+}
+
+export interface AuthenticatedRequest extends Request {
+    user: {
+        role: 'admin' | 'employee';
+        areaId: string;
+    };
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecretjwtkey'; // Fallback for safety
@@ -26,7 +34,7 @@ export const protect = (req: Request, res: Response, next: NextFunction) => {
             token = req.headers.authorization.split(' ')[1];
 
             // Verify token
-            const decoded = jwt.verify(token, JWT_SECRET) as { role: 'admin' | 'employee' };
+            const decoded = jwt.verify(token, JWT_SECRET) as { role: 'admin' | 'employee', areaId: string };
 
             // Attach user to the request
             req.user = decoded;

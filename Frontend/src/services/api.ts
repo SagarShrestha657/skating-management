@@ -58,8 +58,8 @@ apiClient.interceptors.response.use(
     }
 );
 
-export const login = async (password: string): Promise<{ token: string }> => {
-    return apiClient.post(`/auth/login`, { password });
+export const login = async (credentials: { username: string; password: string }): Promise<{ token: string }> => {
+    return apiClient.post(`/auth/login`, credentials);
 };
 
 export const getActiveSessions = async (): Promise<{ sessions: UserSession[] }> => {

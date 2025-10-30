@@ -2,12 +2,17 @@ import { Request, Response } from 'express';
 import Session from '../models/Session';
 import { startOfDay, endOfDay, startOfMonth, endOfMonth, subDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 
+
 export const createSession = async (req: Request, res: Response) => {
     try {
         const { name, hours, quantity, totalAmount } = req.body;
 
         if (!name || !hours || !quantity || totalAmount === undefined) {
             return res.status(400).json({ message: 'Missing required fields: name, hours, quantity, totalAmount.' });
+        }
+
+        if (!req.user) {
+            return res.status(401).json({ message: 'Not authorized' });
         }
 
         // Get the current time in UTC. The frontend will handle displaying it in Nepal's timezone.
@@ -21,6 +26,7 @@ export const createSession = async (req: Request, res: Response) => {
             quantity,
             totalAmount,
             startTime,
+            areaId: req.user.areaId, // Add areaId from the authenticated user's token
             endTime,
             status: 'active',
             notified: false,
@@ -42,7 +48,15 @@ export const editSession = async (req: Request, res: Response) => {
             return res.status(404).json({ message: 'Session not found.' });
         }
 
+        if (!req.user) {
+            return res.status(401).json({ message: 'Not authorized' });
+        }
+
         // Recalculate endTime based on original startTime and new hours
+        if (session.areaId !== req.user.areaId) {
+            return res.status(403).json({ message: 'User not authorized to edit this session' });
+        }
+
         const endTime = new Date(new Date(session.startTime!).getTime() + hours * 60 * 60 * 1000);
 
         const updatedSession = await Session.findByIdAndUpdate(
@@ -64,7 +78,11 @@ export const editSession = async (req: Request, res: Response) => {
 
 export const getActiveSessions = async (req: Request, res: Response) => {
     try {
-        const sessions = await Session.find({ status: 'active' }).sort({ createdAt: -1 });
+        if (!req.user) {
+            return res.status(401).json({ message: 'Not authorized' });
+        }
+        // Only fetch sessions for the user's area
+        const sessions = await Session.find({ status: 'active', areaId: req.user.areaId }).sort({ createdAt: -1 });
         return res.status(200).json({ success: true, sessions });
     } catch (error) {
         console.error('Error fetching active sessions:', error);
@@ -75,10 +93,26 @@ export const getActiveSessions = async (req: Request, res: Response) => {
 
 export const deleteSession = async (req: Request, res: Response) => {
     try {
+        const sessionToComplete = await Session.findById(req.params.id);
+
+        if (!sessionToComplete) {
+            return res.status(404).json({ message: 'Session not found.' });
+        }
+
+        if (!req.user) {
+            return res.status(401).json({ message: 'Not authorized' });
+        }
+
+        if (sessionToComplete.areaId !== req.user.areaId) {
+            return res.status(403).json({ message: 'User not authorized to complete this session.' });
+        }
         // Find the session by ID and update its status to 'completed'
         const session = await Session.findByIdAndUpdate(
             req.params.id,
-            { status: 'completed' },
+            {
+                status: 'completed',
+                notified: true,
+            },
             { new: true } // Return the updated document
         );
 
@@ -94,6 +128,16 @@ export const deleteSession = async (req: Request, res: Response) => {
 
 export const deleteSessionPermanently = async (req: Request, res: Response) => {
     try {
+        const sessionToDelete = await Session.findById(req.params.id);
+        if (!sessionToDelete) {
+            return res.status(404).json({ message: 'Session not found.' });
+        }
+        if (!req.user) {
+            return res.status(401).json({ message: 'Not authorized' });
+        }
+        if (sessionToDelete.areaId !== req.user.areaId) {
+            return res.status(403).json({ message: 'User not authorized to delete this session' });
+        }
         const session = await Session.findByIdAndDelete(req.params.id);
 
         if (!session) {
@@ -119,6 +163,12 @@ export const getWeeklySales = async (req: Request, res: Response) => {
         // Create an array of all dates in that week
         const daysInWeek = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
+        if (!req.user) {
+            return res.status(401).json({ message: 'Not authorized' });
+        }
+
+        const areaId = req.user.areaId;
+
         const weeklySales = await Promise.all(daysInWeek.map(async (day) => {
             const dayStart = new Date(day);
             dayStart.setHours(0, 0, 0, 0);
@@ -127,7 +177,12 @@ export const getWeeklySales = async (req: Request, res: Response) => {
             dayEnd.setHours(23, 59, 59, 999);
 
             const dailyData = await Session.aggregate([
-                { $match: { createdAt: { $gte: dayStart, $lte: dayEnd } } },
+                {
+                    $match: {
+                        createdAt: { $gte: dayStart, $lte: dayEnd },
+                        areaId: areaId
+                    }
+                },
                 { $group: { _id: null, total: { $sum: '$totalAmount' } } }
             ]);
 
@@ -152,13 +207,21 @@ export const getWeeklySales = async (req: Request, res: Response) => {
 
 export const getAnalyticsKpis = async (req: Request, res: Response) => {
     try {
+        if (!req.user) {
+            return res.status(401).json({ message: 'Not authorized' });
+        }
         const now = new Date();
 
         // Today's Sales
         const todayStart = startOfDay(now);
         const todayEnd = endOfDay(now);
         const todaySalesData = await Session.aggregate([
-            { $match: { createdAt: { $gte: todayStart, $lte: todayEnd } } },
+            {
+                $match: {
+                    createdAt: { $gte: todayStart, $lte: todayEnd },
+                    areaId: req.user.areaId
+                }
+            },
             { $group: { _id: null, total: { $sum: '$totalAmount' } } }
         ]);
         const todaySales = todaySalesData.length > 0 ? todaySalesData[0].total : 0;
@@ -167,7 +230,12 @@ export const getAnalyticsKpis = async (req: Request, res: Response) => {
         const monthStart = startOfMonth(now);
         const monthEnd = endOfMonth(now);
         const monthSalesData = await Session.aggregate([
-            { $match: { createdAt: { $gte: monthStart, $lte: monthEnd } } },
+            {
+                $match: {
+                    createdAt: { $gte: monthStart, $lte: monthEnd },
+                    areaId: req.user.areaId
+                }
+            },
             { $group: { _id: null, total: { $sum: '$totalAmount' } } }
         ]);
         const monthSales = monthSalesData.length > 0 ? monthSalesData[0].total : 0;
@@ -192,7 +260,14 @@ export const getAnalyticsTransactions = async (req: Request, res: Response) => {
             end = endOfDay(new Date(endDate as string));
         }
 
-        const recentTransactions = await Session.find({ createdAt: { $gte: start, $lte: end } })
+        if (!req.user) {
+            return res.status(401).json({ message: 'Not authorized' });
+        }
+
+        const recentTransactions = await Session.find({
+            createdAt: { $gte: start, $lte: end },
+            areaId: req.user.areaId
+        })
             .sort({ createdAt: -1 });
 
         return res.status(200).json({ success: true, data: { recentTransactions } });

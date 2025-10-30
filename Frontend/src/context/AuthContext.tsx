@@ -1,4 +1,5 @@
 import React, { createContext, useState, useContext, useEffect,type ReactNode } from 'react';
+import { login as apiLogin } from '../services/api';
 
 export type UserRole = 'admin' | 'employee' | null;
 
@@ -23,7 +24,7 @@ const decodeJwt = (token: string | null): UserRole => {
 interface AuthContextType {
     role: UserRole;
     isAuthenticated: boolean;
-    login: (token: string) => void;
+    login: (credentials: { username: string; password: string }) => Promise<void>;
     logout: () => void;
 }
 
@@ -45,7 +46,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     }, [authToken]);
 
-    const login = (token: string) => {
+    const login = async (credentials: { username: string; password: string }) => {
+        const { token } = await apiLogin(credentials);
         setAuthToken(token);
     };
 
